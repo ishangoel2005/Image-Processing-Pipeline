@@ -1,0 +1,50 @@
+{
+  "Comment": "Image Processing WorkFlow",
+  "StartAt": "ExtractMetadata",
+  "States": {
+    "ExtractMetadata": {
+      "Type": "Task",
+      "Resource": "${ExtractMetadataFunctionArn}",
+      "Next": "ValidateFormat",
+      "ResultPath": "$.ExtractMetadataResult"
+    },
+    "ValidateFormat": {
+      "Type": "Task",
+      "Resource": "${ValidateFormatFunctionArn}",
+      "Next": "StoreMetadata",
+      "ResultPath": "$.ValidateFormatResult"
+    },
+    "StoreMetadata": {
+      "Type": "Task",
+      "Resource": "${StoreMetadataFunctionArn}",
+      "Next": "ParallelProcessing",
+      "ResultPath": "$.StoreMetadataResult"
+    },
+    "ParallelProcessing": {
+      "Type": "Parallel",
+      "End": true,
+      "Branches": [
+        {
+          "StartAt": "RekognitionTagging",
+          "States": {
+            "RekognitionTagging": {
+              "Type": "Task",
+              "Resource": "${RekognitionTagFunctionArn}",
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "GenerateThumbnail",
+          "States": {
+            "GenerateThumbnail": {
+              "Type": "Task",
+              "Resource": "${GenerateThumbnailFunctionArn}",
+              "End": true
+            }
+          }
+        }
+      ]
+    }
+  }
+}

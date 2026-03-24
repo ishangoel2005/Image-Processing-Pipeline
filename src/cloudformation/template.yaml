@@ -1,0 +1,249 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless Image Recognition Pipeline
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    MemorySize: 256
+    Timeout: 30
+    Environment:
+      Variables:
+        DYNAMODB_TABLE: !Ref ImageMetadataTable
+        S3_BUCKET: !Ref PhotoRepoBucket
+
+Resources:
+  # S3 Bucket
+  PhotoRepoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
+            AllowedOrigins: ['*']
+            ExposedHeaders: [ETag]
+            MaxAge: 3000
+
+  # DynamoDB Table
+  ImageMetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: objectKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: objectKey
+          KeyType: HASH
+
+  # Cognito Setup
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: ImageAppUserPool
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: ImageAppClient
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+  IdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !GetAtt UserPool.ProviderName
+          
+  # IAM Role for Authenticated Users
+  CognitoAuthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref IdentityPool
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr: authenticated
+      Policies:
+        - PolicyName: S3UploadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub
+                    - "${BucketArn}/private/${!cognito-identity.amazonaws.com:sub}/*"
+                    - BucketArn: !GetAtt PhotoRepoBucket.Arn
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt PhotoRepoBucket.Arn
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:GetItem
+                Resource: !GetAtt ImageMetadataTable.Arn
+
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles:
+        authenticated: !GetAtt CognitoAuthRole.Arn
+
+  # State Machine
+  ImageProcStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: ../stepfunctions/state-machine-definition.json
+      DefinitionSubstitutions:
+        ExtractMetadataFunctionArn: !GetAtt ExtractMetadataFunction.Arn
+        ValidateFormatFunctionArn: !GetAtt ValidateFormatFunction.Arn
+        StoreMetadataFunctionArn: !GetAtt StoreMetadataFunction.Arn
+        RekognitionTagFunctionArn: !GetAtt RekognitionTagFunction.Arn
+        GenerateThumbnailFunctionArn: !GetAtt GenerateThumbnailFunction.Arn
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ExtractMetadataFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ValidateFormatFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref StoreMetadataFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RekognitionTagFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref GenerateThumbnailFunction
+
+  # Lambda Functions
+  S3TriggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../lambda-functions/
+      Handler: s3trigger.handler
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref ImageProcStateMachine
+      Policies:
+        - StepFunctionsExecutionPolicy:
+            StateMachineName: !GetAtt ImageProcStateMachine.Name
+
+  ExtractMetadataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../lambda-functions/
+      Handler: extract-metadata.handler
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref PhotoRepoBucket
+
+  ValidateFormatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../lambda-functions/
+      Handler: validate-format.handler
+
+  StoreMetadataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../lambda-functions/
+      Handler: store-metadata.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ImageMetadataTable
+
+  RekognitionTagFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../lambda-functions/
+      Handler: rekognition-tag.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ImageMetadataTable
+        - RekognitionDetectOnlyPolicy: {}
+        - S3ReadPolicy:
+            BucketName: !Ref PhotoRepoBucket
+
+  GenerateThumbnailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../lambda-functions/
+      Handler: generate-thumbnail.handler
+      MemorySize: 512
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref PhotoRepoBucket
+
+  S3TriggerFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt S3TriggerFunction.Arn
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt PhotoRepoBucket.Arn
+      SourceAccount: !Ref AWS::AccountId
+
+  BucketNotificationFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3BucketNotificationPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:PutBucketNotification
+                Resource: !GetAtt PhotoRepoBucket.Arn
+
+  BucketNotificationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../lambda-functions/
+      Handler: bucket-notification.handler
+      Role: !GetAtt BucketNotificationFunctionRole.Arn
+
+  PhotoRepoBucketNotification:
+    Type: Custom::S3BucketNotification
+    Properties:
+      ServiceToken: !GetAtt BucketNotificationFunction.Arn
+      BucketName: !Ref PhotoRepoBucket
+      FunctionArn: !GetAtt S3TriggerFunction.Arn
+      Prefix: private/
+    DependsOn: S3TriggerFunctionPermission
+
+Outputs:
+  Region:
+    Value: !Ref AWS::Region
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  IdentityPoolId:
+    Value: !Ref IdentityPool
+  PhotoRepoBucketName:
+    Value: !Ref PhotoRepoBucket
