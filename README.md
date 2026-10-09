@@ -1,18 +1,18 @@
 # Serverless Event-Driven Image Processing Pipeline on AWS
 
-A cloud-native, serverless, event-driven image processing and analysis pipeline built on AWS. The application automatically processes uploaded images, extracts EXIF metadata, generates optimized thumbnails, performs AI-powered object/scene recognition, and stores structured metadata for interactive query via a React frontend.
+A cloud-native, serverless, event-driven image processing and analysis pipeline built on AWS. The application automatically processes uploaded images, extracts EXIF metadata, generates optimized thumbnails, performs AI-powered object/scene recognition and stores structured metadata for interactive query via a React frontend.
 
 ---
 
-## 🌟 Key Highlights & Architecture Features
+## Key Highlights & Architecture Features
 
 * **Serverless & Event-Driven**: Built an event-driven image processing pipeline on AWS for automated image analysis and metadata extraction triggered immediately upon S3 uploads.
-* **Workflow Orchestration**: Leveraged **AWS Lambda**, **Amazon Rekognition**, and state machine orchestration via **AWS Step Functions** to enable scalable, reliable, and fault-tolerant parallel processing.
+* **Workflow Orchestration**: Leveraged **AWS Lambda**, **Amazon Rekognition** and state machine orchestration via **AWS Step Functions** to enable scalable, reliable and fault-tolerant parallel processing.
 * **Structured Cloud Storage**: Designed a cloud-native, highly available solution using **Amazon DynamoDB** for structured metadata storage and **Amazon S3** for media asset hosting, ensuring seamless integration across all services.
 
 ---
 
-## 📐 Pipeline Architecture & Workflow
+## Pipeline Architecture & Workflow
 
 ```mermaid
 flowchart TD
@@ -42,7 +42,7 @@ flowchart TD
 1. **Upload Trigger**: When a user uploads a JPEG/PNG image from the React frontend, it lands in the S3 bucket (`PhotoRepoBucket`).
 2. **S3 Event Notification**: An `s3:ObjectCreated:*` event invokes the `S3Trigger` Lambda function, extracting user/album context and kicking off the AWS Step Functions State Machine (`ImageProcStateMachine`).
 3. **Sequential Metadata Extraction**:
-   - **Extract Metadata**: Lambda inspects image headers to extract EXIF data, resolution, dimensions, and mime types.
+   - **Extract Metadata**: Lambda inspects image headers to extract EXIF data, resolution, dimensions and mime types.
    - **Format Validation**: Verifies format integrity and allowed file extensions.
    - **Initial Persistence**: Stores initial record into Amazon DynamoDB with a status of `PROCESSING`.
 4. **Parallel Execution Branch**:
@@ -52,11 +52,11 @@ flowchart TD
 
 ---
 
-## 🛠️ Tech Stack & AWS Services
+## Tech Stack & AWS Services
 
 | Component | Technology / AWS Service | Description |
 | :--- | :--- | :--- |
-| **Frontend** | React (Vite), Lucide Icons, AWS Amplify SDK | Interactive web UI for uploads, album management, and tag display |
+| **Frontend** | React (Vite), Lucide Icons, AWS Amplify SDK | Interactive web UI for uploads, album management and tag display |
 | **Authentication** | Amazon Cognito User Pools & Identity Pools | Secure user authentication and direct scoped S3 upload permissions |
 | **Storage** | Amazon S3 (`PhotoRepoBucket`) | Object storage for original images and thumbnail previews |
 | **Database** | Amazon DynamoDB (`ImageMetadataTable`) | Fully managed NoSQL key-value store for image metadata & tags |
@@ -67,7 +67,7 @@ flowchart TD
 
 ---
 
-## 🚀 Deployment & Local Setup
+## Deployment & Local Setup
 
 ### 1. Backend Infrastructure (AWS SAM)
 
@@ -84,7 +84,7 @@ sam build
 sam deploy --guided
 ```
 
-Take note of the SAM deployment outputs: `UserPoolId`, `UserPoolClientId`, `IdentityPoolId`, `PhotoRepoBucketName`, and `Region`.
+Take note of the SAM deployment outputs: `UserPoolId`, `UserPoolClientId`, `IdentityPoolId`, `PhotoRepoBucketName` and `Region`.
 
 ### 2. Frontend Web Application (React + Vite)
 
@@ -111,6 +111,6 @@ npm run dev
 
 ---
 
-## 📌 Deployment Note
+## Deployment Note
 
 > **Note**: This application was deployed on **AWS EC2** during our presentation, but was removed due to cost constraints.
