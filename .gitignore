@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+/.pnpm-store
+
+# React Frontend build outputs & environment files
+src/react-frontend/dist/
+src/react-frontend/build/
+src/react-frontend/.env
+src/react-frontend/.env.local
+src/react-frontend/.env.*.local
+
+# AWS SAM build directory
+src/cloudformation/.aws-sam/
+.aws-sam/
+
+# Log files
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Zip archives & OS temp files
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+.DS_Store
+Thumbs.db
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
